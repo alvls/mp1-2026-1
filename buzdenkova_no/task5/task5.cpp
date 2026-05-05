@@ -65,7 +65,7 @@ public:
 
 class boxOffice {
 private:
-    Warehouse warehouse;
+    Warehouse& warehouse;
 
     struct CheckItem {
         Warehouse::Product product;
@@ -101,7 +101,7 @@ private:
     }
 
 public:
-    boxOffice() = default;
+    boxOffice(Warehouse& wh) : warehouse(wh) {}
 
     bool scanProduct(const string& barcode) {
         if (!warehouse.hasProduct(barcode)) {
@@ -190,7 +190,8 @@ public:
 int main() {
     setlocale(LC_ALL, "Russian");
 
-    boxOffice boxOffice;
+    Warehouse wh;
+    boxOffice boxOffice(wh);
 
     boxOffice.scanProduct("0001");
     boxOffice.scanProduct("0002");
