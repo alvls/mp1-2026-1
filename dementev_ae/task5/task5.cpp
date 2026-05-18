@@ -2,530 +2,472 @@
 #include <string>
 #include <map>
 #include <cmath>
+#include <vector>
 
 using namespace std;
 
 struct Client
 {
-	string accountNumber;
-	string fullName;
+	string acc, name, pwd;
 	int balance;
-	string password;
-	bool hasActiveCredit;
-	double creditAmount;
-	double remainingDebt;
-	int creditTermMonths;
-	double annualRate;
-	int monthsPaid;
+	bool hasCredit = false;
+	double creditAmount = 0, remainingDebt = 0, annualRate = 0;
+	int creditMonths = 0, monthsPaid = 0;
 
-	Client() : balance(0), hasActiveCredit(false), creditAmount(0),
-			   remainingDebt(0), creditTermMonths(0), annualRate(0), monthsPaid(0) {}
-
-	Client(string acc, string name, int bal, string pwd)
-		: accountNumber(acc), fullName(name), balance(bal), password(pwd),
-		  hasActiveCredit(false), creditAmount(0), remainingDebt(0),
-		  creditTermMonths(0), annualRate(0), monthsPaid(0) {}
+	Client(string a, string n, int b, string p) : acc(a), name(n), balance(b), pwd(p) {}
+	Client() {}
 };
 
 class ProcessingCenter
 {
-private:
 	map<string, Client> clients;
 
 public:
 	ProcessingCenter()
 	{
-		clients["0001"] = Client("0001", "Иванов Иван Иванович", 50000, "1234");
-		clients["0002"] = Client("0002", "Петров Петр Петрович", 200000, "5678");
-		clients["0003"] = Client("0003", "Сидорова Анна Сергеевна", 150000, "9012");
-		clients["0004"] = Client("0004", "Козлов Дмитрий Алексеевич", 500000, "pass");
+		clients["0001"] = Client("0001", "Иванов Иван", 50000, "1234");
+		clients["0002"] = Client("0002", "Петров Петр", 200000, "5678");
+		clients["0003"] = Client("0003", "Сидорова Анна", 150000, "9012");
+		clients["0004"] = Client("0004", "Козлов Дмитрий", 500000, "pass");
 	}
 
-	bool authorize(string accountNumber, string password)
+	bool auth(string acc, string pwd)
 	{
-		auto it = clients.find(accountNumber);
-		if (it != clients.end() && it->second.password == password)
-		{
-			return true;
-		}
-		return false;
+		auto it = clients.find(acc);
+		return it != clients.end() && it->second.pwd == pwd;
 	}
 
-	Client *getClient(string accountNumber)
+	Client *getClient(string acc)
 	{
-		auto it = clients.find(accountNumber);
-		if (it != clients.end())
-		{
-			return &(it->second);
-		}
-		return nullptr;
+		auto it = clients.find(acc);
+		return it != clients.end() ? &it->second : nullptr;
 	}
 
-	void updateClient(Client client)
-	{
-		clients[client.accountNumber] = client;
-	}
+	void update(Client c) { clients[c.acc] = c; }
 
-	void showAllClients()
-	{
-		cout << "\n=== БАЗА КЛИЕНТОВ ПРОЦЕССИНГОВОГО ЦЕНТРА ===\n";
-		for (auto &pair : clients)
-		{
-			cout << "Счет: " << pair.first
-				 << " | ФИО: " << pair.second.fullName
-				 << " | Баланс: " << pair.second.balance << " руб."
-				 << " | Кредит: " << (pair.second.hasActiveCredit ? "да" : "нет");
-			if (pair.second.hasActiveCredit)
-			{
-				cout << " | Остаток: " << pair.second.remainingDebt << " руб.";
-			}
-			cout << endl;
-		}
-	}
+	map<string, Client> &getAll() { return clients; }
 };
 
 class Credit
 {
-private:
 	ProcessingCenter *center;
-	Client *currentClient;
-	bool isAuthorized;
+	Client *current = nullptr;
+	bool authorized = false;
 
-	const int validTerms[5] = {1, 2, 3, 5, 15};
-
-	bool isValidTerm(int years)
+	double getRate(double amount, int years)
 	{
-		for (int i = 0; i < 5; i++)
+		double rates[][4] = {{0, 100000, 1, 18}, {0, 100000, 2, 17}, {0, 100000, 3, 16}, {0, 100000, 5, 15}, {0, 100000, 15, 14}, {100000, 500000, 1, 15}, {100000, 500000, 2, 14}, {100000, 500000, 3, 13}, {100000, 500000, 5, 12.5}, {100000, 500000, 15, 12}, {500000, 1000000, 1, 14}, {500000, 1000000, 2, 13}, {500000, 1000000, 3, 12}, {500000, 1000000, 5, 11.5}, {500000, 1000000, 15, 11}, {1000000, 3000000, 1, 13}, {1000000, 3000000, 2, 12}, {1000000, 3000000, 3, 11}, {1000000, 3000000, 5, 10.5}, {1000000, 3000000, 15, 10}};
+		for (auto &r : rates)
+			if (amount >= r[0] && amount <= r[1] && years == (int)r[2])
+				return r[3];
+		return -1;
+	}
+
+	double monthlyPayment(double amount, double rate, int months)
+	{
+		double mr = rate / 100 / 12;
+		return mr == 0 ? amount / months : amount * mr * pow(1 + mr, months) / (pow(1 + mr, months) - 1);
+	}
+
+public:
+	Credit(ProcessingCenter *pc) : center(pc) {}
+
+	bool login(string acc, string pwd)
+	{
+		if (center->auth(acc, pwd))
 		{
-			if (validTerms[i] == years)
-				return true;
+			current = center->getClient(acc);
+			authorized = true;
+			return true;
 		}
 		return false;
 	}
 
-	double getInterestRate(double amount, int years)
-	{
-		double rates[20][4] = {
-			// до 100 тыс. рублей
-			{0, 100000, 1, 18},
-			{0, 100000, 2, 17},
-			{0, 100000, 3, 16},
-			{0, 100000, 5, 15},
-			{0, 100000, 15, 14},
-			// от 100 до 500 тыс. рублей
-			{100000, 500000, 1, 15},
-			{100000, 500000, 2, 14},
-			{100000, 500000, 3, 13},
-			{100000, 500000, 5, 12.5},
-			{100000, 500000, 15, 12},
-			// от 500 тыс. до 1 млн рублей
-			{500000, 1000000, 1, 14},
-			{500000, 1000000, 2, 13},
-			{500000, 1000000, 3, 12},
-			{500000, 1000000, 5, 11.5},
-			{500000, 1000000, 15, 11},
-			// от 1 до 3 млн рублей
-			{1000000, 3000000, 1, 13},
-			{1000000, 3000000, 2, 12},
-			{1000000, 3000000, 3, 11},
-			{1000000, 3000000, 5, 10.5},
-			{1000000, 3000000, 15, 10}};
+	bool isAuthorized() { return authorized; }
+	Client *getCurrent() { return current; }
 
-		for (int i = 0; i < 20; i++)
+	bool hasActiveCredit()
+	{
+		return authorized && current->hasCredit;
+	}
+
+	double getRemainingDebt()
+	{
+		return authorized && current->hasCredit ? current->remainingDebt : 0;
+	}
+
+	double getCreditAmount()
+	{
+		return authorized && current->hasCredit ? current->creditAmount : 0;
+	}
+
+	double getAnnualRate()
+	{
+		return authorized && current->hasCredit ? current->annualRate : 0;
+	}
+
+	int getMonthsPaid()
+	{
+		return authorized && current->hasCredit ? current->monthsPaid : 0;
+	}
+
+	int getCreditMonths()
+	{
+		return authorized && current->hasCredit ? current->creditMonths : 0;
+	}
+
+	struct AvailableCredit
+	{
+		int years;
+		string rangeName;
+		double amount;
+		double rate;
+		double monthlyPayment;
+		bool approved;
+	};
+
+	vector<AvailableCredit> getAvailableCredits()
+	{
+		vector<AvailableCredit> result;
+		if (!authorized)
+			return result;
+
+		int terms[] = {1, 2, 3, 5, 15};
+		double ranges[][2] = {{0, 100000}, {100000, 500000}, {500000, 1000000}, {1000000, 3000000}};
+		string names[] = {"do 100k", "100-500k", "500k-1mln", "1-3mln"};
+
+		for (int t : terms)
 		{
-			if (amount >= rates[i][0] && amount <= rates[i][1] && years == (int)rates[i][2])
+			for (int i = 0; i < 4; i++)
 			{
-				return rates[i][3];
-			}
-		}
-		return -1;
-	}
-
-	double calculateMonthlyPayment(double amount, double annualRate, int months)
-	{
-		double monthlyRate = annualRate / 100.0 / 12.0;
-		if (monthlyRate == 0)
-			return amount / months;
-		return amount * monthlyRate * pow(1 + monthlyRate, months) / (pow(1 + monthlyRate, months) - 1);
-	}
-
-	bool isApproved(double monthlyPayment, int clientBalance)
-	{
-		return clientBalance >= (monthlyPayment * 6);
-	}
-
-public:
-	Credit(ProcessingCenter *pc) : center(pc), currentClient(nullptr), isAuthorized(false) {}
-
-	bool authorizeClient(string accountNumber, string password)
-	{
-		if (center->authorize(accountNumber, password))
-		{
-			currentClient = center->getClient(accountNumber);
-			isAuthorized = true;
-			cout << "\nАВТОРИЗАЦИЯ УСПЕШНА!" << endl;
-			cout << "  Добро пожаловать, " << currentClient->fullName << "!" << endl;
-			cout << "  Номер счета: " << currentClient->accountNumber << endl;
-			cout << "  Баланс счета: " << currentClient->balance << " руб." << endl;
-			return true;
-		}
-		else
-		{
-			cout << "\nОШИБКА АВТОРИЗАЦИИ!" << endl;
-			cout << "  Неверный номер счета или пароль." << endl;
-			return false;
-		}
-	}
-
-	void showAvailableCredits()
-	{
-		if (!isAuthorized)
-		{
-			cout << "\n✗ Необходима авторизация!" << endl;
-			return;
-		}
-
-		cout << "\n=== ДОСТУПНЫЕ КРЕДИТЫ ДЛЯ КЛИЕНТА " << currentClient->accountNumber << " ===" << endl;
-		cout << "Текущий баланс: " << currentClient->balance << " руб." << endl;
-		cout << "\nСрок\tСумма кредита\t\tСтавка\t\tЕжемес. платеж\tОдобрение" << endl;
-		cout << "--------------------------------------------------------------------------------" << endl;
-
-		double ranges[4][2] = {
-			{0, 100000},
-			{100000, 500000},
-			{500000, 1000000},
-			{1000000, 3000000}};
-
-		string rangeNames[4] = {
-			"до 100 тыс.",
-			"100-500 тыс.",
-			"500 тыс.-1 млн",
-			"1-3 млн"};
-
-		for (int t = 0; t < 5; t++)
-		{
-			int years = validTerms[t];
-			for (int r = 0; r < 4; r++)
-			{
-				double testAmount = (ranges[r][0] + ranges[r][1]) / 2;
-				if (testAmount < ranges[r][0])
-					testAmount = ranges[r][0] + 10000;
-				if (testAmount > ranges[r][1])
-					testAmount = ranges[r][1];
-
-				double rate = getInterestRate(testAmount, years);
+				double amount = (ranges[i][0] + ranges[i][1]) / 2;
+				double rate = getRate(amount, t);
 				if (rate > 0)
 				{
-					double monthlyPayment = calculateMonthlyPayment(testAmount, rate, years * 12);
-					bool approved = isApproved(monthlyPayment, currentClient->balance);
-
-					cout << years << " лет\t";
-					printf("%-15s", rangeNames[r].c_str());
-					printf("\t%.1f%%\t\t", rate);
-					printf("%.0f руб.\t", monthlyPayment);
-					cout << (approved ? " МОЖНО" : " НЕЛЬЗЯ") << endl;
+					double mp = monthlyPayment(amount, rate, t * 12);
+					result.push_back({t, names[i], amount, rate, mp, current->balance >= mp * 6});
 				}
 			}
 		}
-		cout << endl;
+		return result;
 	}
 
-	void checkExistingCredit()
+	struct EligibilityResult
 	{
-		if (!isAuthorized)
-		{
-			cout << "\n Необходима авторизация!" << endl;
-			return;
-		}
+		bool eligible;
+		double rate;
+		double monthlyPayment;
+		double requiredBalance;
+		string reason;
+	};
 
-		cout << "\n=== ПРОВЕРКА НАЛИЧИЯ КРЕДИТА ===" << endl;
-		if (currentClient->hasActiveCredit)
-		{
-			cout << " У вас есть активный кредит!" << endl;
-			cout << "  Сумма кредита: " << currentClient->creditAmount << " руб." << endl;
-			cout << "  Остаток долга: " << currentClient->remainingDebt << " руб." << endl;
-			cout << "  Срок кредита: " << currentClient->creditTermMonths << " месяцев" << endl;
-			cout << "  Процентная ставка: " << currentClient->annualRate << "% годовых" << endl;
-			cout << "  Оплачено месяцев: " << currentClient->monthsPaid << endl;
-			cout << "  Осталось месяцев: " << (currentClient->creditTermMonths - currentClient->monthsPaid) << endl;
-		}
-		else
-		{
-			cout << " У вас нет активных кредитов." << endl;
-		}
-	}
-
-	bool checkCreditEligibility(double amount, int years)
+	EligibilityResult checkEligibility(double amount, int years)
 	{
-		if (!isAuthorized)
-		{
-			cout << "\n Необходима авторизация!" << endl;
-			return false;
-		}
+		if (!authorized)
+			return {false, 0, 0, 0, "No authorization"};
+		if (current->hasCredit)
+			return {false, 0, 0, 0, "Active credit exists"};
 
-		cout << "\n=== ПРОВЕРКА ВОЗМОЖНОСТИ ПОЛУЧЕНИЯ КРЕДИТА ===" << endl;
-		cout << "Запрошено: " << amount << " руб. на " << years << " лет" << endl;
-
-		if (currentClient->hasActiveCredit)
-		{
-			cout << "Отказано: у вас уже есть активный кредит!" << endl;
-			return false;
-		}
-		if (!isValidTerm(years))
-		{
-			cout << "Отказано: недопустимый срок кредита!" << endl;
-			cout << "  Допустимые сроки: 1, 2, 3, 5, 15 лет" << endl;
-			return false;
-		}
-
-		double rate = getInterestRate(amount, years);
+		double rate = getRate(amount, years);
 		if (rate < 0)
-		{
-			cout << " Отказано: недопустимая сумма кредита!" << endl;
-			cout << "  Допустимые диапазоны: до 100 тыс., 100-500 тыс., 500 тыс.-1 млн, 1-3 млн руб." << endl;
-			return false;
-		}
+			return {false, 0, 0, 0, "Invalid amount"};
 
 		int months = years * 12;
-		double monthlyPayment = calculateMonthlyPayment(amount, rate, months);
+		double mp = monthlyPayment(amount, rate, months);
+		double need = mp * 6;
 
-		if (isApproved(monthlyPayment, currentClient->balance))
+		if (current->balance >= need)
 		{
-			cout << " КРЕДИТ МОЖЕТ БЫТЬ ОДОБРЕН!" << endl;
-			cout << "  Процентная ставка: " << rate << "% годовых" << endl;
-			cout << "  Ежемесячный платеж: " << monthlyPayment << " руб." << endl;
-			cout << "  Требуется для одобрения (6 платежей): " << (monthlyPayment * 6) << " руб." << endl;
-			cout << "  Ваш баланс: " << currentClient->balance << " руб. - ДОСТАТОЧНО" << endl;
-			return true;
+			return {true, rate, mp, need, ""};
 		}
 		else
 		{
-			cout << " КРЕДИТ НЕ ОДОБРЕН!" << endl;
-			cout << "  Процентная ставка: " << rate << "% годовых" << endl;
-			cout << "  Ежемесячный платеж: " << monthlyPayment << " руб." << endl;
-			cout << "  Требуется для одобрения (6 платежей): " << (monthlyPayment * 6) << " руб." << endl;
-			cout << "  Ваш баланс: " << currentClient->balance << " руб. - НЕДОСТАТОЧНО" << endl;
-			cout << "  Не хватает: " << (monthlyPayment * 6 - currentClient->balance) << " руб." << endl;
-			return false;
+			return {false, rate, mp, need, "Insufficient funds"};
 		}
 	}
 
-	bool takeCredit(double amount, int years)
+	struct TakeResult
 	{
-		if (!isAuthorized)
-		{
-			cout << "\n Необходима авторизация!" << endl;
-			return false;
-		}
+		bool success;
+		double rate;
+		double monthlyPayment;
+		string error;
+	};
 
-		cout << "\n=== ОФОРМЛЕНИЕ КРЕДИТА ===" << endl;
+	TakeResult takeCredit(double amount, int years)
+	{
+		if (!authorized)
+			return {false, 0, 0, "No authorization"};
+		if (current->hasCredit)
+			return {false, 0, 0, "Active credit exists"};
 
-		if (!checkCreditEligibility(amount, years))
-		{
-			return false;
-		}
+		double rate = getRate(amount, years);
+		if (rate < 0)
+			return {false, 0, 0, "Invalid amount"};
 
-		double rate = getInterestRate(amount, years);
 		int months = years * 12;
-		double monthlyPayment = calculateMonthlyPayment(amount, rate, months);
+		double mp = monthlyPayment(amount, rate, months);
+		if (current->balance < mp * 6)
+			return {false, rate, mp, "Insufficient funds"};
 
-		currentClient->hasActiveCredit = true;
-		currentClient->creditAmount = amount;
-		currentClient->remainingDebt = amount;
-		currentClient->creditTermMonths = months;
-		currentClient->annualRate = rate;
-		currentClient->monthsPaid = 0;
+		current->hasCredit = true;
+		current->creditAmount = amount;
+		current->remainingDebt = amount;
+		current->creditMonths = months;
+		current->annualRate = rate;
+		current->balance += amount;
+		center->update(*current);
 
-		currentClient->balance += amount;
-
-		center->updateClient(*currentClient);
-
-		cout << "\n КРЕДИТ ОДОБРЕН И ВЫДАН! " << endl;
-		cout << "  Сумма кредита: " << amount << " руб." << endl;
-		cout << "  Срок: " << years << " лет (" << months << " месяцев)" << endl;
-		cout << "  Процентная ставка: " << rate << "% годовых" << endl;
-		cout << "  Ежемесячный платеж: " << monthlyPayment << " руб." << endl;
-		cout << "  Сумма " << amount << " руб. зачислена на ваш счет." << endl;
-		cout << "  Новый баланс счета: " << currentClient->balance << " руб." << endl;
-
-		return true;
+		return {true, rate, mp, ""};
 	}
 
-	void showCreditState()
+	struct PaymentResult
 	{
-		if (!isAuthorized)
+		bool success;
+		double interest;
+		double principal;
+		double newDebt;
+		bool fullyPaid;
+		string error;
+	};
+
+	PaymentResult repayCredit(double amount)
+	{
+		if (!authorized || !current->hasCredit)
+			return {false, 0, 0, 0, false, "No active credit"};
+
+		double mr = current->annualRate / 100 / 12;
+		double interest = current->remainingDebt * mr;
+		double minPmt = monthlyPayment(current->creditAmount, current->annualRate, current->creditMonths);
+
+		if (amount < minPmt)
+			return {false, 0, 0, 0, false, "Amount less than minimum payment"};
+		if (current->balance < amount)
+			return {false, 0, 0, 0, false, "Insufficient funds"};
+
+		current->balance -= amount;
+		double principal = amount - interest;
+		if (principal > current->remainingDebt)
+			principal = current->remainingDebt;
+		if (principal < 0)
+			principal = 0;
+
+		current->remainingDebt -= principal;
+		current->monthsPaid++;
+
+		bool fullyPaid = current->remainingDebt <= 0.01;
+		if (fullyPaid)
 		{
-			cout << "\n Необходима авторизация!" << endl;
-			return;
+			current->hasCredit = false;
+			current->remainingDebt = 0;
 		}
 
-		cout << "\n=== ТЕКУЩЕЕ СОСТОЯНИЕ КРЕДИТА ===" << endl;
-
-		if (!currentClient->hasActiveCredit)
-		{
-			cout << "У вас нет активного кредита." << endl;
-			return;
-		}
-
-		double monthlyRate = currentClient->annualRate / 100.0 / 12.0;
-		double accruedInterest = currentClient->remainingDebt * monthlyRate;
-		double minPayment = calculateMonthlyPayment(currentClient->creditAmount,
-													currentClient->annualRate,
-													currentClient->creditTermMonths);
-
-		cout << "  Начальная сумма кредита: " << currentClient->creditAmount << " руб." << endl;
-		cout << "  Остаток основного долга: " << currentClient->remainingDebt << " руб." << endl;
-		cout << "  Процентная ставка: " << currentClient->annualRate << "% годовых" << endl;
-		cout << "  Начислено процентов за текущий месяц: " << accruedInterest << " руб." << endl;
-		cout << "  Минимальный ежемесячный платеж: " << minPayment << " руб." << endl;
-		cout << "  Всего оплачено месяцев: " << currentClient->monthsPaid << endl;
-		cout << "  Осталось месяцев: " << (currentClient->creditTermMonths - currentClient->monthsPaid) << endl;
-
-		double totalPaid = minPayment * currentClient->monthsPaid;
-		double overpayment = totalPaid - (currentClient->creditAmount - currentClient->remainingDebt);
-		cout << "  Примерная переплата на данный момент: " << overpayment << " руб." << endl;
+		center->update(*current);
+		return {true, interest, principal, current->remainingDebt, fullyPaid, ""};
 	}
 
-	bool repayCredit(double amount)
+	struct EarlyRepayResult
 	{
-		if (!isAuthorized)
-		{
-			cout << "\n Необходима авторизация!" << endl;
-			return false;
-		}
+		bool success;
+		double totalAmount;
+		double saved;
+		string error;
+	};
 
-		cout << "\n=== ПОГАШЕНИЕ КРЕДИТА ===" << endl;
-
-		if (!currentClient->hasActiveCredit)
-		{
-			cout << " У вас нет активного кредита!" << endl;
-			return false;
-		}
-
-		double minPayment = calculateMonthlyPayment(currentClient->creditAmount,
-													currentClient->annualRate,
-													currentClient->creditTermMonths);
-		double monthlyRate = currentClient->annualRate / 100.0 / 12.0;
-		double accruedInterest = currentClient->remainingDebt * monthlyRate;
-
-		cout << "  Минимальный платеж за месяц: " << minPayment << " руб." << endl;
-		cout << "  Начислено процентов за месяц: " << accruedInterest << " руб." << endl;
-		cout << "  Вы вносите: " << amount << " руб." << endl;
-
-		if (amount < minPayment)
-		{
-			cout << " ОШИБКА: Сумма платежа меньше минимальной!" << endl;
-			cout << "  Минимальный платеж: " << minPayment << " руб." << endl;
-			return false;
-		}
-
-		if (currentClient->balance < amount)
-		{
-			cout << " ОШИБКА: Недостаточно средств на счете!" << endl;
-			cout << "  Доступно: " << currentClient->balance << " руб." << endl;
-			cout << "  Требуется: " << amount << " руб." << endl;
-			return false;
-		}
-
-		currentClient->balance -= amount;
-
-		double paysInterest = accruedInterest;
-		double paysPrincipal = amount - accruedInterest;
-
-		if (paysPrincipal > currentClient->remainingDebt)
-		{
-			paysPrincipal = currentClient->remainingDebt;
-			paysInterest = amount - paysPrincipal;
-		}
-
-		currentClient->remainingDebt -= paysPrincipal;
-		currentClient->monthsPaid++;
-
-		cout << "  Платеж принят!" << endl;
-		cout << "  Из них проценты: " << paysInterest << " руб." << endl;
-		cout << "  Погашение тела долга: " << paysPrincipal << " руб." << endl;
-		cout << "  Остаток долга: " << currentClient->remainingDebt << " руб." << endl;
-
-		if (currentClient->remainingDebt <= 0.01 ||
-			currentClient->monthsPaid >= currentClient->creditTermMonths)
-		{
-			currentClient->hasActiveCredit = false;
-			currentClient->remainingDebt = 0;
-			cout << "\n ПОЗДРАВЛЯЕМ! КРЕДИТ ПОЛНОСТЬЮ ПОГАШЕН! " << endl;
-		}
-		else if (amount > minPayment)
-		{
-			cout << "   Внесена сумма больше минимальной. Вы переплачиваете по кредиту!" << endl;
-		}
-
-		center->updateClient(*currentClient);
-
-		cout << "  Новый баланс счета: " << currentClient->balance << " руб." << endl;
-		return true;
-	}
-
-	bool earlyRepayCredit()
+	EarlyRepayResult earlyRepay()
 	{
-		if (!isAuthorized)
-		{
-			cout << "\n Необходима авторизация!" << endl;
-			return false;
-		}
+		if (!authorized || !current->hasCredit)
+			return {false, 0, 0, "No active credit"};
 
-		cout << "\n=== ДОСРОЧНОЕ ПОГАШЕНИЕ КРЕДИТА ===" << endl;
+		double mr = current->annualRate / 100 / 12;
+		double interest = current->remainingDebt * mr;
+		double total = current->remainingDebt + interest;
 
-		if (!currentClient->hasActiveCredit)
-		{
-			cout << " У вас нет активного кредита!" << endl;
-			return false;
-		}
+		if (current->balance < total)
+			return {false, total, 0, "Insufficient funds"};
 
-		double monthlyRate = currentClient->annualRate / 100.0 / 12.0;
-		double accruedInterest = currentClient->remainingDebt * monthlyRate;
-		double totalToPay = currentClient->remainingDebt + accruedInterest;
+		double mp = monthlyPayment(current->creditAmount, current->annualRate, current->creditMonths);
+		int remaining = current->creditMonths - current->monthsPaid;
+		double saved = mp * remaining - current->remainingDebt;
 
-		cout << "  Остаток основного долга: " << currentClient->remainingDebt << " руб." << endl;
-		cout << "  Начислено процентов за текущий месяц: " << accruedInterest << " руб." << endl;
-		cout << "  Итого к оплате: " << totalToPay << " руб." << endl;
+		current->balance -= total;
+		current->hasCredit = false;
+		current->remainingDebt = 0;
+		current->monthsPaid = current->creditMonths;
+		center->update(*current);
 
-		if (currentClient->balance < totalToPay)
-		{
-			cout << " НЕДОСТАТОЧНО СРЕДСТВ ДЛЯ ДОСРОЧНОГО ПОГАШЕНИЯ!" << endl;
-			cout << "  Доступно: " << currentClient->balance << " руб." << endl;
-			cout << "  Требуется: " << totalToPay << " руб." << endl;
-			cout << "  Не хватает: " << (totalToPay - currentClient->balance) << " руб." << endl;
-			return false;
-		}
-
-		double minPayment = calculateMonthlyPayment(currentClient->creditAmount,
-													currentClient->annualRate,
-													currentClient->creditTermMonths);
-		int remainingMonths = currentClient->creditTermMonths - currentClient->monthsPaid;
-		double wouldHavePaid = minPayment * remainingMonths;
-		double saved = wouldHavePaid - currentClient->remainingDebt;
-
-		currentClient->balance -= totalToPay;
-
-		double oldDebt = currentClient->remainingDebt;
-		currentClient->hasActiveCredit = false;
-		currentClient->remainingDebt = 0;
-		currentClient->monthsPaid = currentClient->creditTermMonths;
-
-		center->updateClient(*currentClient);
-
-		cout << "\n КРЕДИТ ДОСРОЧНО ПОГАШЕН! " << endl;
-		cout << "  Погашено: " << totalToPay << " руб." << endl;
-		cout << "  Сэкономлено на процентах: ~" << saved << " руб." << endl;
-		cout << "  Новый баланс счета: " << currentClient->balance << " руб." << endl;
-
-		return true;
+		return {true, total, saved, ""};
 	}
 
 	void logout()
 	{
-		isAuthorized = false;
-		currentClient = nullptr;
-		cout << "\nВы вышли из системы." << endl;
+		authorized = false;
+		current = nullptr;
+	}
+};
+
+class ConsoleView
+{
+public:
+	static void showHeader()
+	{
+		cout << "========================================\n";
+		cout << "   INTERNET BANK - CREDIT MANAGEMENT\n";
+		cout << "========================================\n";
+	}
+
+	static void showAllClients(ProcessingCenter &center)
+	{
+		cout << "\n=== CLIENTS ===\n";
+		for (auto &p : center.getAll())
+		{
+			cout << p.first << " | " << p.second.name << " | Balance: " << p.second.balance
+				 << " | Credit: " << (p.second.hasCredit ? "yes (" + to_string((int)p.second.remainingDebt) + ")" : "no") << endl;
+		}
+	}
+
+	static void showLoginResult(bool success, Client *client)
+	{
+		if (success)
+		{
+			cout << "\nAUTHORIZATION SUCCESSFUL\n";
+			cout << "  " << client->name << " | Account: " << client->acc << " | Balance: " << client->balance << " rub.\n";
+		}
+		else
+		{
+			cout << "\nAUTHORIZATION ERROR\n";
+		}
+	}
+
+	static void showExistingCredit(Credit &credit)
+	{
+		cout << "\n=== CREDIT CHECK ===\n";
+		if (credit.hasActiveCredit())
+		{
+			cout << "  Active credit:\n";
+			cout << "  Amount: " << credit.getCreditAmount() << " rub.\n";
+			cout << "  Remaining: " << (int)credit.getRemainingDebt() << " rub.\n";
+			cout << "  Rate: " << credit.getAnnualRate() << "%\n";
+			cout << "  Paid " << credit.getMonthsPaid() << " of " << credit.getCreditMonths() << " months\n";
+		}
+		else
+		{
+			cout << "  No active credits\n";
+		}
+	}
+
+	static void showAvailableCredits(Credit &credit)
+	{
+		if (!credit.isAuthorized())
+			return;
+
+		cout << "\n=== AVAILABLE CREDITS ===\n";
+		cout << "Balance: " << credit.getCurrent()->balance << " rub.\n";
+
+		auto credits = credit.getAvailableCredits();
+		for (auto &c : credits)
+		{
+			cout << c.years << "y " << c.rangeName << " | rate " << c.rate << "% | payment " << (int)c.monthlyPayment
+				 << " rub. | " << (c.approved ? "YES" : "NO") << endl;
+		}
+	}
+
+	static void showEligibilityCheck(double amount, int years, Credit::EligibilityResult &res, Credit &credit)
+	{
+		cout << "\n=== CREDIT ELIGIBILITY ===\n";
+		cout << "  Amount: " << amount << " rub. for " << years << " years\n";
+
+		if (!res.eligible)
+		{
+			cout << "  REJECTED: " << res.reason << "\n";
+			if (res.rate > 0)
+			{
+				cout << "  Rate: " << res.rate << "% | Payment: " << (int)res.monthlyPayment << " rub.\n";
+				cout << "  Required: " << (int)res.requiredBalance << " rub. | Balance: "
+					 << (credit.isAuthorized() ? credit.getCurrent()->balance : 0) << " rub.\n";
+			}
+		}
+		else
+		{
+			cout << "  CAN BE APPROVED\n";
+			cout << "  Rate: " << res.rate << "% | Payment: " << (int)res.monthlyPayment << " rub.\n";
+			cout << "  Required: " << (int)res.requiredBalance << " rub. | Balance sufficient\n";
+		}
+	}
+
+	static void showTakeResult(double amount, int years, Credit::TakeResult &res, Credit &credit)
+	{
+		if (!res.success)
+		{
+			cout << "\nFAILED: " << res.error << "\n";
+			return;
+		}
+
+		cout << "\nCREDIT APPROVED AND ISSUED\n";
+		cout << "  Amount: " << amount << " rub. for " << years << " years (" << years * 12 << " months)\n";
+		cout << "  Rate: " << res.rate << "% | Payment: " << (int)res.monthlyPayment << " rub.\n";
+		cout << "  New balance: " << (credit.isAuthorized() ? credit.getCurrent()->balance : 0) << " rub.\n";
+	}
+
+	static void showCreditState(Credit &credit)
+	{
+		cout << "\n=== CREDIT STATE ===\n";
+		if (!credit.hasActiveCredit())
+		{
+			cout << "  No active credit\n";
+			return;
+		}
+
+		double mr = credit.getAnnualRate() / 100 / 12;
+		double interest = credit.getRemainingDebt() * mr;
+
+		cout << "  Remaining debt: " << (int)credit.getRemainingDebt() << " rub.\n";
+		cout << "  Monthly interest: " << (int)interest << " rub.\n";
+		cout << "  Paid " << credit.getMonthsPaid() << " of " << credit.getCreditMonths() << " months\n";
+	}
+
+	static void showPaymentResult(double amount, Credit::PaymentResult &res)
+	{
+		cout << "\n=== CREDIT REPAYMENT ===\n";
+
+		if (!res.success)
+		{
+			cout << "  ERROR: " << res.error << "\n";
+			return;
+		}
+
+		cout << "  Payment accepted\n";
+		cout << "  Interest: " << (int)res.interest << " rub. | Principal: " << (int)res.principal << " rub.\n";
+		cout << "  Remaining debt: " << (int)res.newDebt << " rub.\n";
+
+		if (res.fullyPaid)
+		{
+			cout << "\n  CONGRATULATIONS! CREDIT FULLY REPAID\n";
+		}
+	}
+
+	static void showEarlyRepayResult(Credit::EarlyRepayResult &res, Credit &credit)
+	{
+		cout << "\n=== EARLY REPAYMENT ===\n";
+
+		if (!res.success)
+		{
+			cout << "  ERROR: " << res.error;
+			if (res.totalAmount > 0)
+				cout << " (need " << (int)res.totalAmount << " rub.)";
+			cout << endl;
+			return;
+		}
+
+		cout << "  CREDIT EARLY REPAID\n";
+		cout << "  Paid: " << (int)res.totalAmount << " rub.\n";
+		cout << "  Interest saved: ~" << (int)res.saved << " rub.\n";
+		cout << "  New balance: " << (credit.isAuthorized() ? credit.getCurrent()->balance : 0) << " rub.\n";
+	}
+
+	static void showLogout()
+	{
+		cout << "\nLogged out\n";
 	}
 };
 
@@ -534,61 +476,39 @@ int main()
 	ProcessingCenter center;
 	Credit credit(&center);
 
-	cout << "================================================" << endl;
-	cout << "   ИНТЕРНЕТ-БАНК - УПРАВЛЕНИЕ КРЕДИТАМИ" << endl;
-	cout << "================================================" << endl;
+	ConsoleView::showHeader();
+	ConsoleView::showAllClients(center);
 
-	center.showAllClients();
+	bool loginSuccess = credit.login("0001", "1234");
+	ConsoleView::showLoginResult(loginSuccess, credit.getCurrent());
 
-	cout << "\n================================================" << endl;
-	cout << "1. АВТОРИЗАЦИЯ КЛИЕНТА" << endl;
-	cout << "================================================";
-	credit.authorizeClient("0001", "1234");
+	if (loginSuccess)
+	{
+		ConsoleView::showExistingCredit(credit);
+		ConsoleView::showAvailableCredits(credit);
 
-	cout << "\n================================================" << endl;
-	cout << "2. ПРОВЕРКА НАЛИЧИЯ КРЕДИТА" << endl;
-	cout << "================================================";
-	credit.checkExistingCredit();
+		auto eligibility = credit.checkEligibility(100000, 1);
+		ConsoleView::showEligibilityCheck(100000, 1, eligibility, credit);
 
-	cout << "\n================================================" << endl;
-	cout << "3. ДОСТУПНЫЕ КРЕДИТЫ" << endl;
-	cout << "================================================";
-	credit.showAvailableCredits();
+		auto takeResult = credit.takeCredit(100000, 1);
+		ConsoleView::showTakeResult(100000, 1, takeResult, credit);
 
-	cout << "\n================================================" << endl;
-	cout << "4. ПРОВЕРКА ВОЗМОЖНОСТИ ПОЛУЧЕНИЯ КРЕДИТА" << endl;
-	cout << "================================================";
-	credit.checkCreditEligibility(100000, 1);
+		ConsoleView::showCreditState(credit);
 
-	cout << "\n================================================" << endl;
-	cout << "5. ПОЛУЧЕНИЕ КРЕДИТА" << endl;
-	cout << "================================================";
-	credit.takeCredit(100000, 1);
+		auto paymentResult = credit.repayCredit(9000);
+		ConsoleView::showPaymentResult(9000, paymentResult);
 
-	cout << "\n================================================" << endl;
-	cout << "6. ТЕКУЩЕЕ СОСТОЯНИЕ КРЕДИТА" << endl;
-	cout << "================================================";
-	credit.showCreditState();
+		ConsoleView::showCreditState(credit);
 
-	cout << "\n================================================" << endl;
-	cout << "7. ПОГАШЕНИЕ КРЕДИТА" << endl;
-	cout << "================================================";
-	credit.repayCredit(9000);
+		auto earlyResult = credit.earlyRepay();
+		ConsoleView::showEarlyRepayResult(earlyResult, credit);
 
-	cout << "\n================================================" << endl;
-	cout << "СОСТОЯНИЕ ПОСЛЕ ПЛАТЕЖА" << endl;
-	cout << "================================================";
-	credit.showCreditState();
+		credit.logout();
+		ConsoleView::showLogout();
+	}
 
-	cout << "\n================================================" << endl;
-	cout << "8. ДОСРОЧНОЕ ПОГАШЕНИЕ КРЕДИТА" << endl;
-	cout << "================================================";
-	credit.earlyRepayCredit();
-
-	cout << "\n================================================" << endl;
-	cout << "ИТОГОВОЕ СОСТОЯНИЕ" << endl;
-	cout << "================================================";
-	center.showAllClients();
+	cout << "\n=== FINAL STATE ===\n";
+	ConsoleView::showAllClients(center);
 
 	return 0;
 }
