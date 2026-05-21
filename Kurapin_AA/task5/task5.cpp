@@ -133,9 +133,9 @@ public:
 
 		std::string to_string() const {
 			return "\nДата: " + std::format("{}", date) +
-				"\nНомер поезда: " + std::to_string((int)train) +
-				"\nНомер вагона: " + std::to_string((int)carriage) +
-				"\nМесто: " + std::to_string((int)seat) +
+				"\nНомер поезда: " + std::to_string((int)train + 1) +
+				"\nНомер вагона: " + std::to_string((int)carriage + 1) +
+				"\nМесто: " + std::to_string((int)seat + 1) +
 				"\nИмя пассажира: " + name +
 				"\nСтанция отправки: " + departure_station +
 				"\nСтанция прибытия: " + destination;
@@ -215,8 +215,10 @@ public:
 		if (ticket_drafts.empty()) return false;
 
 		for (size_t index = 0; index < ticket_drafts.size(); index++) {
-			return !GRR::trains[ticket_drafts[index].train].first.carriages[ticket_drafts[index].carriage].is_Occupied(ticket_drafts[index].seat);
+			if (GRR::trains[ticket_drafts[index].train].first.carriages[ticket_drafts[index].carriage].is_Occupied(ticket_drafts[index].seat)) return false;
 		}
+
+		return true;
 	}
 
 	void Book_Seats() const {
@@ -228,10 +230,8 @@ public:
 	}
 
 	void Cancel_Seats() const {
-		if (Seats_Available()) {
-			for (size_t index = 0; index < ticket_drafts.size(); index++) {
-				GRR::trains[ticket_drafts[index].train].first.carriages[ticket_drafts[index].carriage].Occupy(ticket_drafts[index].seat);
-			}
+		for (size_t index = 0; index < ticket_drafts.size(); index++) {
+			GRR::trains[ticket_drafts[index].train].first.carriages[ticket_drafts[index].carriage].Unoccupy(ticket_drafts[index].seat);
 		}
 	}
 
@@ -292,7 +292,6 @@ int main() {
 	SetConsoleOutputCP(1251);
 	SetConsoleCP(1251);
 
-	GRR database = GRR();
 	Ticket_Interface user_interface = Ticket_Interface();
 
 	user_interface.Make_Drafts();
