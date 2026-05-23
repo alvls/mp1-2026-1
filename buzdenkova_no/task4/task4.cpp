@@ -30,22 +30,17 @@ public:
         year = FirstYear;
     }
 
+    //изменение SetObservation
     void SetObservation(int day, int month, int year, const std::string& name, double weight) {
         double rounded_weight = std::round(weight / INACCURACY_WEIGHT) * INACCURACY_WEIGHT;
 
-        Observation new_obs = { day, month, year, name, rounded_weight };
-
-        bool observation_exists = false;
         for (const scales::Observation& obs : observations) {
             if (obs.day == day && obs.month == month && obs.year == year && obs.name == name) {
-                observation_exists = true;
-                break;
+                obs.weight = rounded_weight;
+                return;
             }
         }
-
-        if (!observation_exists) {
-            observations.push_back(new_obs);
-        }
+        observations.push_back({ day, month, year, name, rounded_weight });
     }
 
     bool GetWeight(int day, int month, int year, const std::string& name, double& weight) const {
