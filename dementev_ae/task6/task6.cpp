@@ -1,281 +1,188 @@
 #include <iostream>
 #include <string>
 #include <vector>
-#include <algorithm>
 #include <random>
 #include <ctime>
 
-using namespace std;
-
-class SecretNumber
-{
-private:
-    string number;
-
-    string generateUniqueNumber(int length)
-    {
-        vector<int> digits;
-        for (int i = 0; i <= 9; i++)
-        {
-            digits.push_back(i);
-        }
-
-        random_device rd;
-        mt19937 gen(rd());
-
-        uniform_int_distribution<> distFirst(1, 9);
-        int firstDigit = distFirst(gen);
-
-        string result = to_string(firstDigit);
-
-        auto it = find(digits.begin(), digits.end(), firstDigit);
-        digits.erase(it);
-
-        for (int i = 1; i < length; i++)
-        {
-            uniform_int_distribution<> dist(0, digits.size() - 1);
-            int index = dist(gen);
-            result += to_string(digits[index]);
-            digits.erase(digits.begin() + index);
-        }
-
-        return result;
-    }
-
+class NumberValidator {
 public:
-    SecretNumber(int length)
-    {
-        if (length < 1 || length > 10)
-        {
-            throw invalid_argument("Длина числа должна быть от 1 до 10.");
+    static bool isValid(const std::string& number, int length) {
+        if (number.length() != length) return false;
+        
+        for (char c : number) {
+            if (c < '0' || c > '9') return false;
         }
-        number = generateUniqueNumber(length);
-    }
-
-    string getNumber()
-    {
-        return number;
-    }
-
-    pair<int, int> getBullsAndCows(string guess)
-    {
-        if (guess.length() != number.length())
-        {
-            throw invalid_argument("Длина попытки не совпадает с длиной загаданного числа.");
+        
+        for (size_t i = 0; i < number.length(); i++) {
+            for (size_t j = i + 1; j < number.length(); j++) {
+                if (number[i] == number[j]) return false;
+            }
         }
+        
+        return true;
+    }
+};
 
+class BullsAndCows {
+private:
+    std::string secretNumber;
+    int length;
+    int attempts;
+    
+    std::pair<int, int> calculateBullsAndCows(const std::string& guess) const {
         int bulls = 0;
         int cows = 0;
-
-        for (size_t i = 0; i < number.length(); i++)
-        {
-            if (guess[i] == number[i])
-            {
+        
+        std::vector<bool> secretUsed(length, false);
+        std::vector<bool> guessUsed(length, false);
+        
+        for (int i = 0; i < length; i++) {
+            if (guess[i] == secretNumber[i]) {
                 bulls++;
-            }
-            else if (number.find(guess[i]) != string::npos)
-            {
-                cows++;
+                secretUsed[i] = true;
+                guessUsed[i] = true;
             }
         }
-        return make_pair(bulls, cows);
-    }
-};
-
-class Player
-{
-public:
-    virtual string makeGuess(int numberLength) = 0;
-    virtual ~Player() {}
-};
-
-class HumanPlayer : public Player
-{
-public:
-    string makeGuess(int numberLength) override
-    {
-        string guess;
-        while (true)
-        {
-            cout << "Введите " << numberLength << "-значное число с неповторяющимися цифрами: ";
-            cin >> guess;
-
-            if (guess.length() != numberLength)
-            {
-                cout << "Ошибка: число должно быть " << numberLength << " цифр." << endl;
-                continue;
-            }
-
-            bool allDigits = true;
-            for (char c : guess)
-            {
-                if (!isdigit(c))
-                {
-                    allDigits = false;
-                    break;
-                }
-            }
-            if (!allDigits)
-            {
-                cout << "Ошибка: можно вводить только цифры." << endl;
-                continue;
-            }
-
-            bool unique = true;
-            for (size_t i = 0; i < guess.length(); i++)
-            {
-                for (size_t j = i + 1; j < guess.length(); j++)
-                {
-                    if (guess[i] == guess[j])
-                    {
-                        unique = false;
+        
+        for (int i = 0; i < length; i++) {
+            if (!guessUsed[i]) {
+                for (int j = 0; j < length; j++) {
+                    if (!secretUsed[j] && guess[i] == secretNumber[j]) {
+                        cows++;
+                        secretUsed[j] = true;
                         break;
                     }
                 }
-                if (!unique)
-                    break;
             }
-            if (!unique)
-            {
-                cout << "Ошибка: цифры в числе не должны повторяться." << endl;
-                continue;
-            }
-
-            if (guess[0] == '0' && numberLength > 1)
-            {
-                cout << "Ошибка: число не может начинаться с нуля." << endl;
-                continue;
-            }
-
-            return guess;
         }
+        
+        return {bulls, cows};
     }
-};
-
-class ComputerPlayer : public Player
-{
-private:
-    mt19937 gen;
-
+    
+    std::string generateSecretNumber() {
+        std::string digits = "0123456789";
+        
+        for (int i = 9; i > 0; i--) {
+            int j = rand() % (i + 1);
+            std::swap(digits[i], digits[j]);
+        }
+        
+        return digits.substr(0, length);
+    }
+    
 public:
-    ComputerPlayer() : gen(random_device{}()) {}
-
-    string makeGuess(int numberLength) override
-    {
-        vector<int> digits;
-        for (int i = 0; i <= 9; i++)
-        {
-            digits.push_back(i);
+    BullsAndCows(int n) : length(n), attempts(0) {
+        if (n < 1 || n > 10) {
+            throw std::invalid_argument("Длина числа должна быть от 1 до 10");
         }
-
-        uniform_int_distribution<> distFirst(1, 9);
-        int firstDigit = distFirst(gen);
-
-        string guess = to_string(firstDigit);
-
-        auto it = find(digits.begin(), digits.end(), firstDigit);
-        digits.erase(it);
-
-        for (int i = 1; i < numberLength; i++)
-        {
-            uniform_int_distribution<> dist(0, digits.size() - 1);
-            int index = dist(gen);
-            guess += to_string(digits[index]);
-            digits.erase(digits.begin() + index);
-        }
-
-        cout << "Компьютер предполагает: " << guess << endl;
-        return guess;
+        secretNumber = generateSecretNumber();
     }
+    
+    bool makeGuess(const std::string& guess, int& bulls, int& cows) {
+        if (!NumberValidator::isValid(guess, length)) {
+            throw std::invalid_argument("Некорректное число!");
+        }
+        
+        attempts++;
+        auto result = calculateBullsAndCows(guess);
+        bulls = result.first;
+        cows = result.second;
+        
+        return (bulls == length);
+    }
+    
+    int getAttempts() const { return attempts; }
+    int getLength() const { return length; }
 };
 
-class BullsAndCowsGame
-{
+class Game {
 private:
-    int numberLength;
-    SecretNumber *secretNumber;
-    Player *human;
-    Player *computer;
-    bool isHumanTurn;
-
+    BullsAndCows game;
+    bool gameOver;
+    
+    void displayRules() const {
+        std::cout << "Компьютер загадал число\n";
+    }
+    
 public:
-    BullsAndCowsGame()
-    {
-        human = new HumanPlayer();
-        computer = new ComputerPlayer();
+    Game(int length) : game(length), gameOver(false) {
+        displayRules();
     }
-
-    ~BullsAndCowsGame()
-    {
-        delete secretNumber;
-        delete human;
-        delete computer;
-    }
-
-    void start()
-    {
-        cout << "=== Игра Быки и коровы ===" << endl;
-        cout << "Правила: компьютер загадывает число с неповторяющимися цифрами." << endl;
-        cout << "Вы вводите свой вариант, а компьютер говорит сколько быков (цифра на своем месте) и коров (цифра есть, но не на своем месте)." << endl
-             << endl;
-
-        while (true)
-        {
-            cout << "Выберите длину загадываемого числа (от 1 до 10): ";
-            cin >> numberLength;
-            if (numberLength >= 1 && numberLength <= 10)
-            {
-                break;
-            }
-            cout << "Некорректный ввод. Длина должна быть от 1 до 10." << endl;
-        }
-
-        secretNumber = new SecretNumber(numberLength);
-        cout << "Компьютер загадал " << numberLength << "-значное число (цифры не повторяются)." << endl;
-        cout << "Начинаем игру!" << endl
-             << endl;
-
-        isHumanTurn = true;
-
-        while (true)
-        {
-            if (isHumanTurn)
-            {
-                cout << "\n--- Ваш ход ---" << endl;
-                string guess = human->makeGuess(numberLength);
-                pair<int, int> result = secretNumber->getBullsAndCows(guess);
-                cout << "Результат: Быки = " << result.first << ", Коровы = " << result.second << endl;
-
-                if (result.first == numberLength)
-                {
-                    cout << "Поздравляю! Вы отгадали число!" << endl;
-                    cout << "Игра окончена. Вы победили!" << endl;
-                    break;
+    
+    void play() {
+        while (!gameOver) {
+            std::string guess;
+            std::cout << "Попытка #" << (game.getAttempts() + 1) 
+                      << ". Введите " << game.getLength() 
+                      << "-значное число: ";
+            std::cin >> guess;
+            
+            try {
+                int bulls, cows;
+                bool isGuessed = game.makeGuess(guess, bulls, cows);
+                
+                std::cout << "Результат: " << cows << " коров";
+                if (cows == 1) std::cout << "а";
+                else if (cows >= 2 && cows <= 4) std::cout << "ы";
+                std::cout << ", " << bulls << " бык";
+                if (bulls != 1) std::cout << "а";
+                std::cout << "\n\n";
+                
+                if (isGuessed) {
+                    std::cout << "Вы отгадали число " << guess << "!\n";
+                    std::cout << "Количество попыток: " << game.getAttempts() << "\n";
+                    gameOver = true;
                 }
+            } catch (const std::exception& e) {
+                std::cout << "Ошибка: " << e.what() << "\n";
+                std::cout << "Попробуйте снова.\n\n";
             }
-            else
-            {
-                cout << "\n--- Ход компьютера (демонстрационный) ---" << endl;
-                string guess = computer->makeGuess(numberLength);
-                pair<int, int> result = secretNumber->getBullsAndCows(guess);
-                cout << "Результат: Быки = " << result.first << ", Коровы = " << result.second << endl;
-
-                if (result.first == numberLength)
-                {
-                    cout << "Компьютер угадал число! Вы проиграли." << endl;
-                    break;
-                }
-            }
-
-            isHumanTurn = !isHumanTurn;
         }
     }
 };
 
-int main()
-{
-    setlocale(LC_ALL, "Russian");
-    BullsAndCowsGame game;
-    game.start();
+class GameMenu {
+private:
+    int getValidNumber() {
+        int n;
+        while (true) {
+            std::cout << "Введите длину числа (1-10): ";
+            std::cin >> n;
+            
+            if (std::cin.fail() || n < 1 || n > 10) {
+                std::cin.clear();
+                std::cin.ignore(10000, '\n');
+                std::cout << "Ошибка! Введите число от 1 до 10.\n";
+            } else {
+                return n;
+            }
+        }
+    }
+    
+public:
+    void start() {
+        int length = getValidNumber();
+        
+        Game game(length);
+        game.play();
+        
+        std::cout << "\nХотите сыграть еще? (y/n): ";
+        char answer;
+        std::cin >> answer;
+        
+        if (answer == 'y' || answer == 'Y') {
+            std::cout << "\n\n";
+            start();
+        } else {
+            std::cout << "Спасибо за игру!\n";
+        }
+    }
+};
+
+int main() {
+    srand(time(0));
+    GameMenu menu;
+    menu.start();
+    
     return 0;
 }
