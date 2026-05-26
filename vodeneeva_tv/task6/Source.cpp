@@ -3,7 +3,7 @@
 #include <vector>
 #include <ctime>
 #include <cstdlib>
-
+#include <clocale>
 using namespace std;
 
 class Igra {
@@ -125,6 +125,7 @@ public:
 };
 
 int main() {
+    setlocale(LC_ALL, "Russian");
     Igra igra;
     igra.zapustitIgry();
     
