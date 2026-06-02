@@ -2,6 +2,7 @@
 #include <string>
 #include <windows.h>
 
+
 //доделать main (TO DO)
 
 using namespace std;
